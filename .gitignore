@@ -40,6 +40,9 @@ ENV/
 output/
 *.html
 
+# Data files (too large for GitHub - provide separate download)
+Data/
+
 # OS
 .DS_Store
 Thumbs.db
