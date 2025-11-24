@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 *.so
 .Python
+env/
+venv/
+ENV/
 build/
 develop-eggs/
 dist/
@@ -20,32 +23,26 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
-venv/
-env/
-ENV/
-.venv
+# Streamlit
+.streamlit/
 
-# IDE
+# Data directory - too large for regular git, use Git LFS or store separately
+Data/
+
+# Output files
+output/maps/*.html
+output/*.csv
+
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Streamlit
-.streamlit/
-
-# Output files
-output/
-*.html
-
-# Data files (too large for GitHub - provide separate download)
-Data/
-
 # OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# Jupyter
+.ipynb_checkpoints/

@@ -42,33 +42,19 @@ booth_mapping_project/
 
 ## Installation
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/amarr07/Indian-Electoral-Booth-Sampling-and-Spatial-Analysis-Tool.git
-   cd Indian-Electoral-Booth-Sampling-and-Spatial-Analysis-Tool
-   ```
+1. **Clone or download this project**
 
-2. **Download Electoral Data**:
-   
-   The shapefile data is too large for GitHub. Download it separately:
-   
-   - **Source**: [datameet/maps - Indian Electoral Boundaries](https://github.com/datameet/maps)
-   - Download the `mapping-indias-elections` dataset
-   - Extract the state folders into the `Data/` directory in the project root
-   
-   Expected structure:
-   ```
-   Data/
-   ├── andhrapradesh/
-   ├── assam/
-   ├── bihar/
-   └── ... (other states)
-   ```
-
-3. **Install Python dependencies**:
+2. **Install Python dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
+
+3. **Prepare your data**:
+   - Place state shapefiles in the `Data/<state>/` directory
+   - Ensure files follow naming convention:
+     - `<state>.assembly.shp` for AC boundaries
+     - `<state>.parliamentary.shp` for PC boundaries
+     - `<state>.booth.shp` for booth locations
 
 ## Usage
 
