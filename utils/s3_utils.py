@@ -69,12 +69,13 @@ class S3Manager:
         shapefile_base = None
         for file_key in files:
             filename = file_key.split('/')[-1].lower()
-            if file_type in filename and filename.endswith('.shp'):
+            if file_type.lower() in filename and filename.endswith('.shp'):
                 shapefile_base = file_key.rsplit('.', 1)[0]
                 break
         
         if not shapefile_base:
-            raise FileNotFoundError(f"No {file_type} shapefile found for {state}")
+            available_files = [f.split('/')[-1] for f in files if f.endswith('.shp')]
+            raise FileNotFoundError(f"No {file_type} shapefile found for {state}. Available shapefiles: {available_files}")
         
         extensions = ['.shp', '.shx', '.dbf', '.prj']
         local_paths = {}
