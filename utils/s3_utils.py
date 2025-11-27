@@ -1,162 +1,105 @@
 import os
-import json
 import boto3
-from botocore.exceptions import ClientError
 import tempfile
-from typing import List, Optional
 import geopandas as gpd
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 
-
 class S3Manager:
-    
-    def __init__(self, credentials_file: str = None, base_prefix: str = None):
-        if credentials_file:
-            self.credentials = self._load_credentials(credentials_file)
-            self.bucket_name = self.credentials['bucket_name']
-            aws_access_key = self.credentials['aws_access_key']
-            aws_secret_key = self.credentials['aws_secret_key']
-            prefix = self.credentials.get('base_prefix', 'shp_files_state_wise/')
-        else:
-            self.bucket_name = os.getenv('AWS_BUCKET_NAME')
-            aws_access_key = os.getenv('AWS_ACCESS_KEY')
-            aws_secret_key = os.getenv('AWS_SECRET_KEY')
-            prefix = os.getenv('AWS_BASE_PREFIX', 'shp_files_state_wise/')
+    def __init__(self):
+        try:
+            import streamlit as st
+            self.bucket_name = st.secrets.get("BUCKET_NAME", os.getenv("BUCKET_NAME"))
+            aws_access_key = st.secrets.get("AWS_ACCESS_KEY", os.getenv("AWS_ACCESS_KEY"))
+            aws_secret_key = st.secrets.get("AWS_SECRET_KEY", os.getenv("AWS_SECRET_KEY"))
+        except:
+            self.bucket_name = os.getenv("BUCKET_NAME")
+            aws_access_key = os.getenv("AWS_ACCESS_KEY")
+            aws_secret_key = os.getenv("AWS_SECRET_KEY")
         
         if not all([self.bucket_name, aws_access_key, aws_secret_key]):
-            raise ValueError("Missing required AWS credentials. Set environment variables or provide credentials file.")
+            cred_file = Path("credintials.json")
+            if cred_file.exists():
+                with open(cred_file, 'r') as f:
+                    content = f.read()
+                    for line in content.split('\n'):
+                        if '=' in line:
+                            key, value = line.split('=', 1)
+                            key = key.strip()
+                            value = value.strip().strip('"')
+                            if key == 'bucket_name':
+                                self.bucket_name = value
+                            elif key == 'aws_access_key':
+                                aws_access_key = value
+                            elif key == 'aws_secret_key':
+                                aws_secret_key = value
+        
+        if not all([self.bucket_name, aws_access_key, aws_secret_key]):
+            raise ValueError("Missing AWS credentials")
         
         self.s3_client = boto3.client(
             's3',
             aws_access_key_id=aws_access_key,
             aws_secret_access_key=aws_secret_key
         )
-        self.base_prefix = base_prefix or prefix
+        self.base_prefix = "shp_files_state_wise/"
         self.temp_dir = tempfile.mkdtemp()
     
-    def _load_credentials(self, credentials_file: str) -> dict:
-        try:
-            with open(credentials_file, 'r') as f:
-                lines = f.readlines()
-                credentials = {}
-                for line in lines:
-                    line = line.strip()
-                    if line and '=' in line and not line.startswith('#'):
-                        key, value = line.split('=', 1)
-                        key = key.strip()
-                        value = value.strip().strip('"').strip("'")
-                        credentials[key] = value
-                
-                required_keys = ['bucket_name', 'aws_access_key', 'aws_secret_key']
-                for key in required_keys:
-                    if key not in credentials:
-                        raise ValueError(f"Missing required credential: {key}")
-                
-                return credentials
-        except Exception as e:
-            raise ValueError(f"Error loading credentials: {e}")
+    def list_states(self):
+        states = set()
+        paginator = self.s3_client.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=self.bucket_name, Prefix=self.base_prefix, Delimiter='/'):
+            for prefix in page.get('CommonPrefixes', []):
+                state_folder = prefix['Prefix'].replace(self.base_prefix, '').rstrip('/')
+                if state_folder:
+                    states.add(state_folder)
+        return sorted(list(states))
     
-    def list_states(self) -> List[str]:
-        try:
-            response = self.s3_client.list_objects_v2(
-                Bucket=self.bucket_name,
-                Prefix=self.base_prefix,
-                Delimiter='/'
-            )
-            
-            states = []
-            if 'CommonPrefixes' in response:
-                for prefix in response['CommonPrefixes']:
-                    state = prefix['Prefix'].replace(self.base_prefix, '').rstrip('/')
-                    if state:
-                        states.append(state)
-            
-            return sorted(states)
-        except ClientError as e:
-            print(f"Error listing states from S3: {e}")
-            return []
-    
-    def download_shapefile(self, state: str, file_type: str) -> Optional[str]:
-        extensions = ['.shp', '.shx', '.dbf', '.prj']
-        
+    def download_shapefile(self, state, file_type):
         state_prefix = f"{self.base_prefix}{state}/"
+        response = self.s3_client.list_objects_v2(Bucket=self.bucket_name, Prefix=state_prefix)
         
-        try:
-            response = self.s3_client.list_objects_v2(
-                Bucket=self.bucket_name,
-                Prefix=state_prefix,
-                MaxKeys=100
-            )
-            
-            if 'Contents' not in response:
-                print(f"No files found in {state_prefix}")
-                return None
-            
-            shp_files = [obj['Key'] for obj in response['Contents'] if obj['Key'].endswith(f'.{file_type}.shp')]
-            
-            if not shp_files:
-                print(f"No {file_type}.shp file found in {state_prefix}")
-                return None
-            
-            shp_key = shp_files[0]
-            base_name = shp_key.split('/')[-1].replace('.shp', '')
-            
-        except ClientError as e:
-            print(f"Error listing files in {state_prefix}: {e}")
-            return None
+        if 'Contents' not in response:
+            raise FileNotFoundError(f"No files found for state: {state}")
         
-        state_temp_dir = os.path.join(self.temp_dir, state)
-        os.makedirs(state_temp_dir, exist_ok=True)
+        files = [obj['Key'] for obj in response['Contents']]
         
-        downloaded_files = []
+        shapefile_base = None
+        for file_key in files:
+            filename = file_key.split('/')[-1].lower()
+            if file_type in filename and filename.endswith('.shp'):
+                shapefile_base = file_key.rsplit('.', 1)[0]
+                break
+        
+        if not shapefile_base:
+            raise FileNotFoundError(f"No {file_type} shapefile found for {state}")
+        
+        extensions = ['.shp', '.shx', '.dbf', '.prj']
+        local_paths = {}
         
         for ext in extensions:
-            s3_key = f"{state_prefix}{base_name}{ext}"
-            local_path = os.path.join(state_temp_dir, f"{base_name}{ext}")
+            s3_key = f"{shapefile_base}{ext}"
+            local_filename = f"{state}_{file_type}{ext}"
+            local_path = os.path.join(self.temp_dir, local_filename)
             
             try:
-                self.s3_client.download_file(
-                    self.bucket_name,
-                    s3_key,
-                    local_path
-                )
-                downloaded_files.append(local_path)
-            except ClientError as e:
-                print(f"Warning: Could not download {s3_key}: {e}")
-                if ext != '.prj':
-                    self._cleanup_files(downloaded_files)
-                    return None
-        
-        shp_path = os.path.join(state_temp_dir, f"{base_name}.shp")
-        return shp_path if os.path.exists(shp_path) else None
-    
-    def _cleanup_files(self, file_paths: List[str]):
-        for filepath in file_paths:
-            try:
-                if os.path.exists(filepath):
-                    os.remove(filepath)
+                self.s3_client.download_file(self.bucket_name, s3_key, local_path)
+                local_paths[ext] = local_path
             except Exception as e:
-                print(f"Error cleaning up {filepath}: {e}")
+                if ext == '.prj':
+                    continue
+                else:
+                    raise
+        
+        return local_paths.get('.shp')
     
-    def load_shapefile_from_s3(self, state: str, file_type: str) -> Optional[gpd.GeoDataFrame]:
+    def load_shapefile(self, state, file_type):
         shp_path = self.download_shapefile(state, file_type)
-        
-        if shp_path is None:
-            return None
-        
-        try:
-            gdf = gpd.read_file(shp_path)
-            return gdf
-        except Exception as e:
-            print(f"Error loading shapefile {shp_path}: {e}")
-            return None
+        return gpd.read_file(shp_path)
     
     def cleanup(self):
         import shutil
-        try:
-            if os.path.exists(self.temp_dir):
-                shutil.rmtree(self.temp_dir)
-        except Exception as e:
-            print(f"Error cleaning up temp directory: {e}")
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
