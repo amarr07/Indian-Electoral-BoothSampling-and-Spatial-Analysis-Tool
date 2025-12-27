@@ -40,38 +40,47 @@ def find_booths_near_centroid(booths_gdf: gpd.GeoDataFrame, centroid: Tuple[floa
     if cluster_booths.empty:
         return []
     
-    distances = []
-    indices = []
+    if len(cluster_booths) < max_booths:
+        return cluster_booths.index.tolist()
     
+    booth_coords = {}
     for idx, row in cluster_booths.iterrows():
-        booth_coord = (row['latitude'], row['longitude'])
-        dist = geodesic(centroid, booth_coord).meters
-        distances.append(dist)
-        indices.append(idx)
+        booth_coords[idx] = (row['latitude'], row['longitude'])
     
-    dist_df = pd.DataFrame({
-        'index': indices,
-        'distance': distances
-    })
+    valid_pairs = []
+    indices_list = list(booth_coords.keys())
     
-    preferred_range = dist_df[(dist_df['distance'] >= 500) & (dist_df['distance'] <= 2000)]
+    for i in range(len(indices_list)):
+        for j in range(i + 1, len(indices_list)):
+            idx1, idx2 = indices_list[i], indices_list[j]
+            coord1, coord2 = booth_coords[idx1], booth_coords[idx2]
+            distance = geodesic(coord1, coord2).meters
+            
+            if 500 <= distance <= 2000:
+                valid_pairs.append((idx1, idx2, distance))
     
-    if len(preferred_range) >= max_booths:
-        selected_indices = random.sample(preferred_range['index'].tolist(), max_booths)
+    if valid_pairs:
+        selected_pair = random.choice(valid_pairs)
+        return [selected_pair[0], selected_pair[1]]
+    
+    extended_pairs = []
+    for i in range(len(indices_list)):
+        for j in range(i + 1, len(indices_list)):
+            idx1, idx2 = indices_list[i], indices_list[j]
+            coord1, coord2 = booth_coords[idx1], booth_coords[idx2]
+            distance = geodesic(coord1, coord2).meters
+            
+            if 500 <= distance <= 3000:
+                extended_pairs.append((idx1, idx2, distance))
+    
+    if extended_pairs:
+        selected_pair = random.choice(extended_pairs)
+        return [selected_pair[0], selected_pair[1]]
+    
+    if len(indices_list) >= max_booths:
+        return random.sample(indices_list, max_booths)
     else:
-        extended_range = dist_df[(dist_df['distance'] >= 500) & (dist_df['distance'] <= 3000)]
-        
-        if len(extended_range) >= max_booths:
-            selected_indices = random.sample(extended_range['index'].tolist(), max_booths)
-        else:
-            if len(extended_range) > 0:
-                available = extended_range['index'].tolist()
-                selected_indices = random.sample(available, min(len(available), max_booths))
-            else:
-                available = dist_df['index'].tolist()
-                selected_indices = random.sample(available, min(len(available), max_booths))
-    
-    return selected_indices
+        return indices_list
 
 
 def select_booths_from_clusters(booths_gdf: gpd.GeoDataFrame, cluster_centers: np.ndarray, 
@@ -80,6 +89,9 @@ def select_booths_from_clusters(booths_gdf: gpd.GeoDataFrame, cluster_centers: n
     n_clusters = len(cluster_centers)
     
     incomplete_clusters = []
+    clusters_with_insufficient_booths = []
+    
+    actual_clusters_in_data = booths_gdf['cluster'].nunique()
     
     for cluster_id in range(n_clusters):
         centroid = tuple(cluster_centers[cluster_id])
@@ -88,18 +100,29 @@ def select_booths_from_clusters(booths_gdf: gpd.GeoDataFrame, cluster_centers: n
             booths_gdf, centroid, cluster_id, max_booths=booths_per_cluster
         )
         
-        if len(booth_indices) < booths_per_cluster:
+        if len(booth_indices) == 0:
             incomplete_clusters.append(cluster_id)
+        elif len(booth_indices) < booths_per_cluster:
+            clusters_with_insufficient_booths.append((cluster_id, len(booth_indices)))
         
         selected_indices.extend(booth_indices)
     
     selected_booths = booths_gdf.loc[selected_indices].copy()
     
-    is_complete = len(incomplete_clusters) == 0
-    reason = ""
+    is_complete = (len(incomplete_clusters) == 0 and 
+                   len(clusters_with_insufficient_booths) == 0 and 
+                   actual_clusters_in_data == n_clusters)
     
-    if not is_complete:
-        reason = f"Could not find {booths_per_cluster} booths within 3km for cluster(s): {incomplete_clusters}"
+    reasons = []
+    if actual_clusters_in_data < n_clusters:
+        reasons.append(f"Only {actual_clusters_in_data}/{n_clusters} clusters formed")
+    if len(incomplete_clusters) > 0:
+        reasons.append(f"No booths found in cluster(s): {incomplete_clusters}")
+    if len(clusters_with_insufficient_booths) > 0:
+        insufficient_details = [f"cluster {c}({b} booth)" for c, b in clusters_with_insufficient_booths]
+        reasons.append(f"Insufficient booths in: {', '.join(insufficient_details)}")
+    
+    reason = "; ".join(reasons) if reasons else ""
     
     return selected_booths, is_complete, reason
 

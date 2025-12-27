@@ -68,8 +68,9 @@ def validate_booths_in_polygon(booths_gdf: gpd.GeoDataFrame, polygon_gdf: gpd.Ge
     if booths_gdf.crs != polygon_gdf.crs:
         booths_gdf = booths_gdf.to_crs(polygon_gdf.crs)
     
+    code_patterns = ['ac_no', 'pc_no', 'ac', 'pc', 'AC_NO', 'PC_NO', 'AC', 'PC']
+    
     if ac_pc_column is None:
-        code_patterns = ['ac_no', 'pc_no', 'ac', 'pc', 'AC_NO', 'PC_NO', 'AC', 'PC']
         for pattern in code_patterns:
             if pattern in polygon_gdf.columns:
                 ac_pc_column = pattern
@@ -86,6 +87,15 @@ def validate_booths_in_polygon(booths_gdf: gpd.GeoDataFrame, polygon_gdf: gpd.Ge
     polygon = polygon_row.iloc[0].geometry
     
     valid_booths = booths_gdf[booths_gdf.geometry.within(polygon)].copy()
+    
+    booth_ac_pc_column = None
+    for pattern in code_patterns:
+        if pattern in valid_booths.columns:
+            booth_ac_pc_column = pattern
+            break
+    
+    if booth_ac_pc_column:
+        valid_booths = valid_booths[valid_booths[booth_ac_pc_column].astype(str) == str(ac_pc_code)].copy()
     
     return valid_booths
 

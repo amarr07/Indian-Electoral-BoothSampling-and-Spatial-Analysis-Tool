@@ -141,10 +141,10 @@ Number of clusters = round(samples_per_ac / 25)
 
 ### 4. Booth Selection Strategy
 For each cluster:
-- **Primary range**: 500m - 2km from centroid
-- **Extended range**: up to 3km if needed
-- Selects 2 nearest booths to centroid
-- Marks "Not completed" if insufficient booths
+- **Primary range**: Selected booths are 500m - 2km apart from each other
+- **Extended range**: Up to 3km apart if needed
+- Selects 2 booths per cluster that meet distance criteria
+- Marks "Not completed" if insufficient booth pairs found
 
 ### 5. Visualization
 - Interactive Folium maps with:
