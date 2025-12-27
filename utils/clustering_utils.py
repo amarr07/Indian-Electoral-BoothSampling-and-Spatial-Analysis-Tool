@@ -4,6 +4,7 @@ import geopandas as gpd
 from sklearn.cluster import KMeans
 from geopy.distance import geodesic
 from typing import List, Tuple, Dict
+import random
 
 
 def calculate_cluster_count(samples_per_ac: int) -> int:
@@ -24,7 +25,7 @@ def cluster_booths(booths_gdf: gpd.GeoDataFrame, n_clusters: int) -> Tuple[gpd.G
     if n_clusters < 1:
         return booths_gdf, np.array([])
     
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=None, n_init=10)
     booths_gdf['cluster'] = kmeans.fit_predict(coords)
     
     cluster_centers = kmeans.cluster_centers_
@@ -53,24 +54,24 @@ def find_booths_near_centroid(booths_gdf: gpd.GeoDataFrame, centroid: Tuple[floa
         'distance': distances
     })
     
-    dist_df = dist_df.sort_values('distance')
-    
     preferred_range = dist_df[(dist_df['distance'] >= 500) & (dist_df['distance'] <= 2000)]
     
     if len(preferred_range) >= max_booths:
-        selected = preferred_range.head(max_booths)
+        selected_indices = random.sample(preferred_range['index'].tolist(), max_booths)
     else:
         extended_range = dist_df[(dist_df['distance'] >= 500) & (dist_df['distance'] <= 3000)]
         
         if len(extended_range) >= max_booths:
-            selected = extended_range.head(max_booths)
+            selected_indices = random.sample(extended_range['index'].tolist(), max_booths)
         else:
             if len(extended_range) > 0:
-                selected = extended_range.head(max_booths)
+                available = extended_range['index'].tolist()
+                selected_indices = random.sample(available, min(len(available), max_booths))
             else:
-                selected = dist_df.head(max_booths)
+                available = dist_df['index'].tolist()
+                selected_indices = random.sample(available, min(len(available), max_booths))
     
-    return selected['index'].tolist()
+    return selected_indices
 
 
 def select_booths_from_clusters(booths_gdf: gpd.GeoDataFrame, cluster_centers: np.ndarray, 
